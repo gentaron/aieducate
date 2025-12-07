@@ -1,6 +1,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { type User, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../config/firebase';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+interface User {
+    id: string;
+    email: string;
+}
 
 interface AuthContextType {
     user: User | null;
@@ -19,20 +24,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-            setLoading(false);
-        });
-        return () => unsubscribe();
+        // Check if user is logged in
+        fetch(`${API_URL}/api/auth/me`, {
+            credentials: 'include'
+        })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data?.user) {
+                    setUser(data.user);
+                }
+            })
+            .catch(() => { })
+            .finally(() => setLoading(false));
     }, []);
 
     const login = async (email: string, password: string) => {
         setError(null);
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const res = await fetch(`${API_URL}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ email, password })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Login failed');
+            }
+
+            const data = await res.json();
+            setUser(data.user);
         } catch (err: any) {
-            console.error("Login failed", err);
-            setError(err.message || "Login failed. Please check your credentials.");
+            setError(err.message);
             throw err;
         }
     };
@@ -40,16 +64,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const register = async (email: string, password: string) => {
         setError(null);
         try {
-            await createUserWithEmailAndPassword(auth, email, password);
+            const res = await fetch(`${API_URL}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ email, password })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Registration failed');
+            }
+
+            const data = await res.json();
+            setUser(data.user);
         } catch (err: any) {
-            console.error("Registration failed", err);
-            setError(err.message || "Registration failed. Please try again.");
+            setError(err.message);
             throw err;
         }
     };
 
     const logout = async () => {
-        await signOut(auth);
+        await fetch(`${API_URL}/api/auth/logout`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        setUser(null);
     };
 
     return (

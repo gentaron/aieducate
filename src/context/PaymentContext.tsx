@@ -3,6 +3,8 @@ import { useAuth } from './AuthContext';
 import { BrowserProvider, Contract, parseUnits } from 'ethers';
 import { POLYGON_CHAIN_ID_HEX, USDC_ADDRESS, TREASURY_ADDRESS, COURSE_PRICE_USDC, ERC20_ABI } from '../config/web3';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 declare global {
     interface Window {
         ethereum: any;
@@ -33,7 +35,6 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
     const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    // useCallback to safely use in useEffect
     const handleAccountsChanged = useCallback((accounts: string[]) => {
         if (accounts.length === 0) {
             setIsWalletConnected(false);
@@ -44,13 +45,19 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    // Load existing purchases
+    // Load purchases from API
     useEffect(() => {
         if (user) {
-            const stored = localStorage.getItem(`purchases_${user.uid}`);
-            if (stored) {
-                setPurchasedCourses(JSON.parse(stored));
-            }
+            fetch(`${API_URL}/api/purchases`, {
+                credentials: 'include'
+            })
+                .then(res => res.ok ? res.json() : null)
+                .then(data => {
+                    if (data?.purchases) {
+                        setPurchasedCourses(data.purchases.map((p: any) => p.courseId));
+                    }
+                })
+                .catch(console.error);
         } else {
             setPurchasedCourses([]);
         }
@@ -153,15 +160,29 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
 
             const usdcContract = new Contract(USDC_ADDRESS, ERC20_ABI, signer);
 
-            // 2.0 USDC (6 decimals)
             const amount = parseUnits(COURSE_PRICE_USDC, 6);
 
             const tx = await usdcContract.transfer(TREASURY_ADDRESS, amount);
-            await tx.wait(); // Wait for 1 confirmation
+            await tx.wait();
+
+            // Record purchase in database
+            const res = await fetch(`${API_URL}/api/purchases`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    courseId,
+                    txHash: tx.hash,
+                    amount: COURSE_PRICE_USDC
+                })
+            });
+
+            if (!res.ok) {
+                throw new Error('Failed to record purchase');
+            }
 
             const newPurchases = [...purchasedCourses, courseId];
             setPurchasedCourses(newPurchases);
-            localStorage.setItem(`purchases_${user.uid}`, JSON.stringify(newPurchases));
 
             setPaymentStatus('success');
             return true;
