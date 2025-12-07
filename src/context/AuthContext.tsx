@@ -1,12 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { type User, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { auth, googleProvider } from '../config/firebase';
+import { type User, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../config/firebase';
 
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    login: () => Promise<void>;
+    login: (email: string, password: string) => Promise<void>;
+    register: (email: string, password: string) => Promise<void>;
     logout: () => Promise<void>;
+    error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -14,6 +16,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -23,12 +26,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => unsubscribe();
     }, []);
 
-    const login = async () => {
+    const login = async (email: string, password: string) => {
+        setError(null);
         try {
-            await signInWithPopup(auth, googleProvider);
-        } catch (error) {
-            console.error("Login failed", error);
-            alert("Login failed. Please check your network or try again.");
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (err: any) {
+            console.error("Login failed", err);
+            setError(err.message || "Login failed. Please check your credentials.");
+            throw err;
+        }
+    };
+
+    const register = async (email: string, password: string) => {
+        setError(null);
+        try {
+            await createUserWithEmailAndPassword(auth, email, password);
+        } catch (err: any) {
+            console.error("Registration failed", err);
+            setError(err.message || "Registration failed. Please try again.");
+            throw err;
         }
     };
 
@@ -37,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout }}>
+        <AuthContext.Provider value={{ user, loading, login, register, logout, error }}>
             {children}
         </AuthContext.Provider>
     );
