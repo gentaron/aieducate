@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, type ReactNode, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { BrowserProvider, Contract, parseUnits } from 'ethers';
 import { POLYGON_CHAIN_ID_HEX, USDC_ADDRESS, TREASURY_ADDRESS, COURSE_PRICE_USDC, ERC20_ABI } from '../config/web3';
