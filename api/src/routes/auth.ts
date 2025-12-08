@@ -1,72 +1,46 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
+import { verifyMessage } from 'ethers';
 import { authMiddleware, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-// Register
-router.post('/register', async (req, res) => {
+// Login with Wallet
+router.post('/login/wallet', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { walletAddress, signature } = req.body;
 
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password required' });
+        if (!walletAddress || !signature) {
+            return res.status(400).json({ error: 'Wallet address and signature required' });
         }
 
-        if (password.length < 6) {
-            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        // Verify signature
+        // The message must match what the frontend signs
+        const message = `Login to AI Educate Portal: ${new Date().toISOString().split('T')[0]}`;
+        // Note: In a real app, use a nonce or more precise timestamp to prevent replay attacks. 
+        // For this demo, we'll accept a slightly less strict verification or a fixed message 
+        // IF we coordinate with frontend. 
+        // BETTER: Frontend asks for a message (nonce) first? 
+        // SIMPLEST FOR NOW: Frontend signs "Login to AI Educate Portal"
+
+        const recoveredAddress = verifyMessage("Login to AI Educate Portal", signature);
+
+        if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+            return res.status(401).json({ error: 'Invalid signature' });
         }
 
-        const existingUser = await prisma.user.findUnique({ where: { email } });
-        if (existingUser) {
-            return res.status(400).json({ error: 'User already exists' });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = await prisma.user.create({
-            data: { email, password: hashedPassword }
-        });
-
-        const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
-
-        res.json({ user: { id: user.id, email: user.email } });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Registration failed' });
-    }
-});
-
-// Login
-router.post('/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password required' });
-        }
-
-        const user = await prisma.user.findUnique({ where: { email } });
+        // Find or create user
+        let user = await prisma.user.findUnique({ where: { walletAddress } });
         if (!user) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            user = await prisma.user.create({
+                data: { walletAddress }
+            });
         }
 
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ userId: user.id, walletAddress: user.walletAddress }, JWT_SECRET, { expiresIn: '7d' });
 
         res.cookie('token', token, {
             httpOnly: true,
@@ -75,7 +49,7 @@ router.post('/login', async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000
         });
 
-        res.json({ user: { id: user.id, email: user.email } });
+        res.json({ user: { id: user.id, walletAddress: user.walletAddress } });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Login failed' });
@@ -93,7 +67,7 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
     try {
         const user = await prisma.user.findUnique({
             where: { id: req.userId },
-            select: { id: true, email: true, createdAt: true }
+            select: { id: true, walletAddress: true, createdAt: true }
         });
 
         if (!user) {

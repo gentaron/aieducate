@@ -1,17 +1,23 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { BrowserProvider } from 'ethers';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+declare global {
+    interface Window {
+        ethereum: any;
+    }
+}
+
 interface User {
     id: string;
-    email: string;
+    walletAddress: string;
 }
 
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    login: (email: string, password: string) => Promise<void>;
-    register: (email: string, password: string) => Promise<void>;
+    loginWithWallet: () => Promise<void>;
     logout: () => Promise<void>;
     error: string | null;
 }
@@ -24,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        // Check if user is logged in
+        // Check if user is logged in via JWT
         fetch(`${API_URL}/api/auth/me`, {
             credentials: 'include'
         })
@@ -38,42 +44,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .finally(() => setLoading(false));
     }, []);
 
-    const login = async (email: string, password: string) => {
+    const loginWithWallet = async () => {
         setError(null);
+
+        if (!window.ethereum) {
+            setError("MetaMask is not installed!");
+            return;
+        }
+
         try {
-            const res = await fetch(`${API_URL}/api/auth/login`, {
+            const provider = new BrowserProvider(window.ethereum);
+            const accounts = await provider.send("eth_requestAccounts", []);
+            const walletAddress = accounts[0];
+            const signer = await provider.getSigner();
+
+            // Sign a message to prove ownership
+            const message = "Login to AI Educate Portal";
+            const signature = await signer.signMessage(message);
+
+            // Send to backend for verification
+            const res = await fetch(`${API_URL}/api/auth/login/wallet`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ email, password })
+                body: JSON.stringify({ walletAddress, signature })
             });
 
             if (!res.ok) {
                 const data = await res.json();
                 throw new Error(data.error || 'Login failed');
-            }
-
-            const data = await res.json();
-            setUser(data.user);
-        } catch (err: any) {
-            setError(err.message);
-            throw err;
-        }
-    };
-
-    const register = async (email: string, password: string) => {
-        setError(null);
-        try {
-            const res = await fetch(`${API_URL}/api/auth/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ email, password })
-            });
-
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Registration failed');
             }
 
             const data = await res.json();
@@ -93,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, register, logout, error }}>
+        <AuthContext.Provider value={{ user, loading, loginWithWallet, logout, error }}>
             {children}
         </AuthContext.Provider>
     );

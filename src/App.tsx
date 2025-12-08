@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { PaymentProvider, usePayment } from './context/PaymentContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import Login from './pages/Login';
 import PortalHome from './pages/PortalHome';
 import Payment from './pages/Payment';
 
@@ -25,8 +24,6 @@ function App() {
       <AuthProvider>
         <PaymentProvider>
           <Routes>
-            <Route path="/login" element={<Login />} />
-
             {/* Protected Portal Routes */}
             <Route path="/" element={
               <ProtectedRoute>
