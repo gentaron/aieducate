@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+import { getJwtSecret } from '../jwt-secret.js';
 
 export interface AuthRequest extends Request {
     userId?: string;
@@ -15,7 +15,10 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
     }
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+        const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as { userId: string };
+        if (typeof decoded !== 'object' || typeof decoded.userId !== 'string' || !decoded.userId) {
+            return res.status(401).json({ error: 'Invalid token' });
+        }
         req.userId = decoded.userId;
         next();
     } catch (error) {

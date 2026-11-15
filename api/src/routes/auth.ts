@@ -6,7 +6,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+import { getJwtSecret } from '../jwt-secret.js';
 
 // Login with Wallet
 router.post('/login/wallet', async (req, res) => {
@@ -40,7 +40,7 @@ router.post('/login/wallet', async (req, res) => {
             });
         }
 
-        const token = jwt.sign({ userId: user.id, walletAddress: user.walletAddress }, JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ userId: user.id, walletAddress: user.walletAddress }, getJwtSecret(), { expiresIn: '7d' });
 
         res.cookie('token', token, {
             httpOnly: true,
